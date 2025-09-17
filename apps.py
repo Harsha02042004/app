@@ -5,16 +5,19 @@ import os
 
 app = Flask(__name__)
 
-# Load Excel data into DataFrame
-df = pd.read_excel("C:/Users/ananh/Downloads/app/app/descriptions.xlsx")
-image_base_dir = ("static/compund images")
+# Base directory for relative paths
+BASE_DIR = os.path.dirname(os.path.abspath(__file__))
+
+# Load Excel data
+excel_path = os.path.join(BASE_DIR, "descriptions.xlsx")
+df = pd.read_excel(excel_path)
+
+# Images folder
+image_base_dir = os.path.join(BASE_DIR, "static", "compund images")
 
 def get_image_path(compund_name):
-    # Construct the image path
     image_path = os.path.join(image_base_dir, f"{compund_name}.PNG")
-    if os.path.exists(image_path):
-        return image_path
-    return None
+    return image_path if os.path.exists(image_path) else None
 
 @app.route('/')
 def index():
@@ -22,61 +25,37 @@ def index():
 
 @app.route('/suggestions', methods=['GET'])
 def suggestions():
-    query = request.args.get('query')
+    query = request.args.get('query', "").strip().lower()
     if not query:
         return jsonify({'suggestions': []})
-    
-    # Ensure the query is trimmed and normalized
-    query = query.strip().lower()
-    
-    # Filter DataFrame to get suggestions based on the search query
-    suggestions = df[df['Sialic acid analogues'].str.contains(query, case=False, na=False, regex=False)]
-    
-    suggestions_list = suggestions['Sialic acid analogues'].tolist()
-    
-    return jsonify({'suggestions': suggestions_list})
+    matches = df[df['Sialic acid analogues'].str.contains(query, case=False, na=False, regex=False)]
+    return jsonify({'suggestions': matches['Sialic acid analogues'].tolist()})
 
 @app.route('/search', methods=['GET'])
 def search():
-    query = request.args.get('query')
+    query = request.args.get('query', "").strip().lower()
     if not query:
         return jsonify({'results': [], 'suggestions': []})
-    
-    # Debug: Print the search query
-    print(f"Search Query: {query}")
-    
-    # Ensure the query is trimmed and normalized
-    query = query.strip().lower()
-    
-    try:
-        results = df[df['Sialic acid analogues'].str.contains(query, case=False, na=False, regex=False)]
-    except Exception as e:
-        return jsonify({'error': f'Error processing the search: {str(e)}'})
-
+    results = df[df['Sialic acid analogues'].str.contains(query, case=False, na=False, regex=False)]
     if results.empty:
         return jsonify({'results': [], 'suggestions': []})
-
-    # Add image paths to the results
     results_dict = results.to_dict(orient='records')
-    for result in results_dict:
-        result['Image'] = get_image_path(result['Sialic acid analogues'])
-
-    suggestions = [result['Sialic acid analogues'] for result in results_dict]
-
-    return jsonify({'results': results_dict, 'suggestions': suggestions})
+    for r in results_dict:
+        r['Image'] = get_image_path(r['Sialic acid analogues'])
+    return jsonify({'results': results_dict, 'suggestions': [r['Sialic acid analogues'] for r in results_dict]})
 
 @app.route('/download/<filename>')
 def download_file(filename):
-    file_path = os.path.join("C:/Users/ananh/Downloads/app/app/sialic acid analog", filename)
+    file_path = os.path.join(BASE_DIR, "sialic acid analog", filename)
     if not os.path.exists(file_path):
         return jsonify({'error': 'File not found'}), 404
     return send_file(file_path, as_attachment=True)
 
-# Gmail SMTP configuration
+# Gmail SMTP (password from env variable)
 SMTP_SERVER = 'smtp.gmail.com'
 SMTP_PORT = 587
 SMTP_USERNAME = 'lathamythili2000@gmail.com'
-SMTP_PASSWORD = 'tece eefp piol nyxz'  # Use app-specific password if 2FA is enabled
+SMTP_PASSWORD = os.getenv("SMTP_PASSWORD")  # set this in environment
 
 @app.route('/submit_question', methods=['POST'])
 def ask_question():
@@ -85,17 +64,11 @@ def ask_question():
     return jsonify({'message': 'Question sent successfully!'})
 
 def send_email(question):
-    from_email = SMTP_USERNAME
-    to_email = 'lathaladu0912@gmail.com'
-    subject = 'New Question'
-    body = f'You have received a new question:\n\n{question}'
-
-    email_message = f'Subject: {subject}\n\n{body}'
-
+    email_message = f'Subject: New Question\n\nYou have received a new question:\n\n{question}'
     with smtplib.SMTP(SMTP_SERVER, SMTP_PORT) as server:
         server.starttls()
         server.login(SMTP_USERNAME, SMTP_PASSWORD)
-        server.sendmail(from_email, to_email, email_message)
+        server.sendmail(SMTP_USERNAME, 'lathaladu0912@gmail.com', email_message)
 
 if __name__ == '__main__':
     app.run(debug=True)
